@@ -50,18 +50,38 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
-// 4. Rate limiting login (5 attempts max)
+// 4. Rate limiting login (5 attempts max) - Lock 1 MENIT saja
 function checkLoginAttempts() {
-    const attempts = localStorage.getItem('loginAttempts') || 0;
+    const attempts = parseInt(localStorage.getItem('loginAttempts') || '0');
     const lockTime = localStorage.getItem('loginLockTime');
     
-    if (lockTime && Date.now() - parseInt(lockTime) < 1 * 60 * 1000) {
-        return { locked: true, remaining: Math.ceil((1 * 60 * 1000 - (Date.now() - parseInt(lockTime))) / 1000 / 60) };
+    // Cek apakah sedang dalam masa lock (1 menit = 60000 ms)
+    if (lockTime) {
+        const elapsed = Date.now() - parseInt(lockTime);
+        const lockDuration = 1 * 60 * 1000; // 1 MENIT
+        
+        if (elapsed < lockDuration) {
+            const remainingSeconds = Math.ceil((lockDuration - elapsed) / 1000);
+            return { 
+                locked: true, 
+                remaining: remainingSeconds,
+                unit: 'detik'
+            };
+        } else {
+            // Reset setelah 1 menit
+            localStorage.removeItem('loginAttempts');
+            localStorage.removeItem('loginLockTime');
+        }
     }
     
+    // Batas percobaan 5 kali, lock 1 menit
     if (attempts >= 5) {
         localStorage.setItem('loginLockTime', Date.now());
-        return { locked: true, remaining: 1 };
+        return { 
+            locked: true, 
+            remaining: 60,
+            unit: 'detik'
+        };
     }
     
     return { locked: false };
