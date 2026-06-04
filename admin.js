@@ -89,8 +89,7 @@ function resetSessionTimer() {
     if (sessionTimeout) clearTimeout(sessionTimeout);
     sessionTimeout = setTimeout(() => {
         alert('Sesi Anda habis karena tidak ada aktivitas. Silakan login kembali.');
-        auth.signOut();
-        window.location.reload();
+        handleLogout();
     }, 30 * 60 * 1000);
 }
 
@@ -128,27 +127,20 @@ function resetInactivityTimer() {
 
 // ========== FUNGSI OTP ==========
 
-// Generate kode OTP 6 digit
 function generateOtpCode() {
     return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-// Kirim OTP (simulasi - akan tampil di alert)
 function sendOtpToAdmin(email) {
     currentOtpCode = generateOtpCode();
-    otpExpiryTime = Date.now() + 5 * 60 * 1000; // Expired 5 menit
+    otpExpiryTime = Date.now() + 5 * 60 * 1000;
     
-    // Tampilkan OTP ke admin (simulasi via alert)
-    // Di production, ini bisa diganti dengan kirim ke WhatsApp/Telegram/SMS
     alert(`🔐 KODE OTP ANDA: ${currentOtpCode}\n\nKode berlaku 5 menit.\nJangan berikan kode ini kepada siapapun!`);
-    
-    // Simpan juga ke console untuk backup
     console.log(`📱 Kode OTP untuk ${email}: ${currentOtpCode} (berlaku 5 menit)`);
     
     return currentOtpCode;
 }
 
-// Verifikasi OTP
 function verifyOtp(inputCode) {
     if (!currentOtpCode || !otpExpiryTime) {
         return { valid: false, message: 'Belum ada kode OTP. Kirim ulang.' };
@@ -169,23 +161,59 @@ function verifyOtp(inputCode) {
     return { valid: false, message: 'Kode OTP salah!' };
 }
 
+// ========== FUNGSI LOGOUT ==========
+async function handleLogout() {
+    try {
+        if (auth.currentUser) {
+            await db.collection('adminLogs').add({
+                email: auth.currentUser.email,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                action: 'logout'
+            });
+        }
+        await auth.signOut();
+        
+        // Reset form
+        document.getElementById('loginEmail').value = '';
+        document.getElementById('loginPassword').value = '';
+        
+        // Sembunyikan tombol logout
+        const logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) logoutBtn.style.display = 'none';
+        
+        // Tampilkan form login
+        document.getElementById('authSection').style.display = 'block';
+        document.getElementById('adminPanel').style.display = 'none';
+        
+        // Clear session timer
+        if (sessionTimeout) clearTimeout(sessionTimeout);
+        
+        console.log('Logout berhasil');
+    } catch (error) {
+        console.error('Logout error:', error);
+    }
+}
+
 // ========== AUTHENTICATION WITH OTP ==========
 
 // Auth state observer
 auth.onAuthStateChanged(async (user) => {
+    const logoutBtn = document.getElementById('logoutBtn');
+    
     if (user) {
         // Cek apakah user ada di collection 'admins' (whitelist)
         const adminDoc = await db.collection('admins').doc(user.uid).get();
         if (!adminDoc.exists) {
             alert('Anda tidak memiliki akses admin.');
-            await auth.signOut();
+            await handleLogout();
             return;
         }
         
-        // Login sukses
+        // Login sukses - tampilkan tombol logout
         document.getElementById('authSection').style.display = 'none';
         document.getElementById('adminPanel').style.display = 'block';
         document.getElementById('adminEmail').innerText = user.email;
+        if (logoutBtn) logoutBtn.style.display = 'inline-block';
         
         // Reset login attempts
         localStorage.removeItem('loginAttempts');
@@ -195,121 +223,124 @@ auth.onAuthStateChanged(async (user) => {
         resetInactivityTimer();
         
         // Log akses admin
-        await db.collection('adminLogs').add({
-            email: user.email,
-            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-            action: 'login',
-            ip: await getClientIP()
-        });
+        try {
+            await db.collection('adminLogs').add({
+                email: user.email,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                action: 'login',
+                ip: await getClientIP()
+            });
+        } catch (e) {
+            console.log('Log error:', e);
+        }
         
     } else {
+        // User logout - sembunyikan tombol logout
         document.getElementById('authSection').style.display = 'block';
         document.getElementById('adminPanel').style.display = 'none';
+        if (logoutBtn) logoutBtn.style.display = 'none';
         if (sessionTimeout) clearTimeout(sessionTimeout);
     }
 });
 
-// Login dengan proteksi + OTP
-document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
-    const loginCheck = checkLoginAttempts();
-    if (loginCheck.locked) {
-        const unit = loginCheck.unit || 'detik';
-        document.getElementById('loginMessage').innerHTML = `⛔ Terlalu banyak percobaan. Coba lagi ${loginCheck.remaining} ${unit} lagi.`;
-        return;
-    }
-    
-    const email = document.getElementById('loginEmail').value;
-    const password = document.getElementById('loginPassword').value;
-    const loginBtn = document.getElementById('loginBtn');
-    
-    loginBtn.disabled = true;
-    loginBtn.textContent = 'Memproses...';
-    
-    try {
-        // STEP 1: Login ke Firebase dengan email & password
-        const userCredential = await auth.signInWithEmailAndPassword(email, password);
-        const user = userCredential.user;
-        
-        // STEP 2: Verifikasi admin whitelist
-        const adminDoc = await db.collection('admins').doc(user.uid).get();
-        if (!adminDoc.exists) {
-            await auth.signOut();
-            throw new Error('Akun tidak terdaftar sebagai admin.');
-        }
-        
-        // STEP 3: Kirim OTP
-        sendOtpToAdmin(email);
-        
-        // STEP 4: Minta input OTP
-        const userOtp = prompt('🔐 Masukkan kode OTP yang telah dikirim:');
-        
-        if (!userOtp) {
-            await auth.signOut();
-            throw new Error('OTP tidak dimasukkan.');
-        }
-        
-        // STEP 5: Verifikasi OTP
-        const otpResult = verifyOtp(userOtp);
-        if (!otpResult.valid) {
-            await auth.signOut();
-            throw new Error(otpResult.message);
-        }
-        
-        // STEP 6: Sukses login
-        document.getElementById('loginMessage').innerHTML = '';
-        loginAttempts = 0;
-        localStorage.removeItem('loginAttempts');
-        localStorage.removeItem('loginLockTime');
-        
-        alert('✅ Login berhasil! Selamat datang admin.');
-        
-    } catch (error) {
-        loginAttempts++;
-        localStorage.setItem('loginAttempts', loginAttempts);
-        
-        const remainingAttempts = 5 - loginAttempts;
-        
-        let errorMsg = '';
-        switch (error.code) {
-            case 'auth/user-not-found':
-                errorMsg = 'Email tidak terdaftar';
-                break;
-            case 'auth/wrong-password':
-                errorMsg = `Password salah. Sisa percobaan: ${remainingAttempts} kali`;
-                break;
-            case 'auth/too-many-requests':
-                errorMsg = 'Terlalu banyak percobaan. Coba lagi nanti.';
-                break;
-            default:
-                errorMsg = error.message;
-        }
-        
-        document.getElementById('loginMessage').innerHTML = `❌ Login gagal: ${errorMsg}`;
-        console.error('Login error:', error);
-        
-        // Jika login gagal, logout untuk bersih-bersih
-        await auth.signOut();
-    } finally {
-        loginBtn.disabled = false;
-        loginBtn.textContent = 'Login';
+// Event listener untuk tombol logout
+document.addEventListener('DOMContentLoaded', () => {
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', handleLogout);
     }
 });
 
-// Logout
-document.getElementById('logoutBtn')?.addEventListener('click', async () => {
-    if (auth.currentUser) {
-        await db.collection('adminLogs').add({
-            email: auth.currentUser.email,
-            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-            action: 'logout'
-        });
-    }
-    await auth.signOut();
-    document.getElementById('loginEmail').value = '';
-    document.getElementById('loginPassword').value = '';
-});
+// Login dengan proteksi + OTP
+const loginForm = document.getElementById('loginForm');
+if (loginForm) {
+    loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const loginCheck = checkLoginAttempts();
+        if (loginCheck.locked) {
+            const unit = loginCheck.unit || 'detik';
+            document.getElementById('loginMessage').innerHTML = `⛔ Terlalu banyak percobaan. Coba lagi ${loginCheck.remaining} ${unit} lagi.`;
+            return;
+        }
+        
+        const email = document.getElementById('loginEmail').value;
+        const password = document.getElementById('loginPassword').value;
+        const loginBtn = document.getElementById('loginBtn');
+        
+        loginBtn.disabled = true;
+        loginBtn.textContent = 'Memproses...';
+        
+        try {
+            // STEP 1: Login ke Firebase dengan email & password
+            const userCredential = await auth.signInWithEmailAndPassword(email, password);
+            const user = userCredential.user;
+            
+            // STEP 2: Verifikasi admin whitelist
+            const adminDoc = await db.collection('admins').doc(user.uid).get();
+            if (!adminDoc.exists) {
+                await auth.signOut();
+                throw new Error('Akun tidak terdaftar sebagai admin.');
+            }
+            
+            // STEP 3: Kirim OTP
+            sendOtpToAdmin(email);
+            
+            // STEP 4: Minta input OTP
+            const userOtp = prompt('🔐 Masukkan kode OTP yang telah dikirim:');
+            
+            if (!userOtp) {
+                await auth.signOut();
+                throw new Error('OTP tidak dimasukkan.');
+            }
+            
+            // STEP 5: Verifikasi OTP
+            const otpResult = verifyOtp(userOtp);
+            if (!otpResult.valid) {
+                await auth.signOut();
+                throw new Error(otpResult.message);
+            }
+            
+            // STEP 6: Sukses login
+            document.getElementById('loginMessage').innerHTML = '';
+            loginAttempts = 0;
+            localStorage.removeItem('loginAttempts');
+            localStorage.removeItem('loginLockTime');
+            
+            alert('✅ Login berhasil! Selamat datang admin.');
+            
+        } catch (error) {
+            loginAttempts++;
+            localStorage.setItem('loginAttempts', loginAttempts);
+            
+            const remainingAttempts = 5 - loginAttempts;
+            
+            let errorMsg = '';
+            switch (error.code) {
+                case 'auth/user-not-found':
+                    errorMsg = 'Email tidak terdaftar';
+                    break;
+                case 'auth/wrong-password':
+                    errorMsg = `Password salah. Sisa percobaan: ${remainingAttempts} kali`;
+                    break;
+                case 'auth/too-many-requests':
+                    errorMsg = 'Terlalu banyak percobaan. Coba lagi nanti.';
+                    break;
+                default:
+                    errorMsg = error.message;
+            }
+            
+            document.getElementById('loginMessage').innerHTML = `❌ Login gagal: ${errorMsg}`;
+            console.error('Login error:', error);
+            
+            // Jika login gagal, logout untuk bersih-bersih
+            await auth.signOut();
+        } finally {
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Login';
+        }
+    });
+}
 
 // Helper: get client IP
 async function getClientIP() {
@@ -368,63 +399,81 @@ function escapeHtml(str) {
 }
 
 // Tambah produk
-document.getElementById('addProductBtn')?.addEventListener('click', () => {
-    editingProductId = null;
-    document.getElementById('modalTitle').innerText = 'Tambah Produk';
-    document.getElementById('productForm').reset();
-    document.getElementById('productFormModal').style.display = 'block';
-});
+const addProductBtn = document.getElementById('addProductBtn');
+if (addProductBtn) {
+    addProductBtn.addEventListener('click', () => {
+        editingProductId = null;
+        document.getElementById('modalTitle').innerText = 'Tambah Produk';
+        document.getElementById('productForm').reset();
+        document.getElementById('productFormModal').style.display = 'block';
+    });
+}
 
-// Submit form produk
-document.getElementById('productForm')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
-    const name = document.getElementById('productName').value;
-    const description = document.getElementById('productDesc').value;
-    const price = parseInt(document.getElementById('productPrice').value);
-    const fileUrl = document.getElementById('productFileUrl').value;
-    const file = document.getElementById('productFile').files[0];
-    
-    let finalFileUrl = fileUrl;
-    
-    try {
-        if (file) {
-            const storageRef = storage.ref(`products/${Date.now()}_${file.name}`);
-            await storageRef.put(file);
-            finalFileUrl = await storageRef.getDownloadURL();
+// Submit form produk - DIPERBAIKI
+const productForm = document.getElementById('productForm');
+if (productForm) {
+    productForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const name = document.getElementById('productName').value;
+        const description = document.getElementById('productDesc').value;
+        const price = parseInt(document.getElementById('productPrice').value);
+        const fileUrl = document.getElementById('productFileUrl').value;
+        const file = document.getElementById('productFile').files[0];
+        
+        let finalFileUrl = fileUrl;
+        const saveBtn = document.getElementById('saveProductBtn');
+        
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Menyimpan...';
+        
+        try {
+            if (file) {
+                const storageRef = storage.ref(`products/${Date.now()}_${file.name}`);
+                await storageRef.put(file);
+                finalFileUrl = await storageRef.getDownloadURL();
+            }
+            
+            const productData = {
+                name: name,
+                description: description,
+                price: price,
+                fileUrl: finalFileUrl || '',
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+            
+            if (editingProductId) {
+                await db.collection('products').doc(editingProductId).update(productData);
+                alert('Produk berhasil diupdate!');
+            } else {
+                productData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+                await db.collection('products').add(productData);
+                alert('Produk berhasil ditambahkan!');
+            }
+            
+            // Log aktivitas
+            if (auth.currentUser) {
+                await db.collection('adminLogs').add({
+                    email: auth.currentUser.email,
+                    action: editingProductId ? 'update_product' : 'add_product',
+                    productName: name,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            }
+            
+            closeModal('productFormModal');
+            loadAdminProducts();
+            productForm.reset();
+            
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Gagal menyimpan produk: ' + error.message);
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Simpan';
         }
-        
-        const productData = {
-            name,
-            description,
-            price,
-            fileUrl: finalFileUrl || '',
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-        
-        if (editingProductId) {
-            await db.collection('products').doc(editingProductId).update(productData);
-            alert('Produk berhasil diupdate!');
-        } else {
-            productData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-            await db.collection('products').add(productData);
-            alert('Produk berhasil ditambahkan!');
-        }
-        
-        await db.collection('adminLogs').add({
-            email: auth.currentUser?.email,
-            action: editingProductId ? 'update_product' : 'add_product',
-            productName: name,
-            timestamp: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        
-        closeModal('productFormModal');
-        loadAdminProducts();
-    } catch (error) {
-        console.error('Error:', error);
-        alert('Gagal menyimpan produk: ' + error.message);
-    }
-});
+    });
+}
 
 // Edit produk
 window.editProduct = async (id) => {
@@ -437,6 +486,7 @@ window.editProduct = async (id) => {
     document.getElementById('productDesc').value = product.description;
     document.getElementById('productPrice').value = product.price;
     document.getElementById('productFileUrl').value = product.fileUrl || '';
+    document.getElementById('productFile').value = '';
     
     document.getElementById('productFormModal').style.display = 'block';
 };
@@ -450,12 +500,14 @@ window.deleteProduct = async (id) => {
             
             await db.collection('products').doc(id).delete();
             
-            await db.collection('adminLogs').add({
-                email: auth.currentUser?.email,
-                action: 'delete_product',
-                productName: productName,
-                timestamp: firebase.firestore.FieldValue.serverTimestamp()
-            });
+            if (auth.currentUser) {
+                await db.collection('adminLogs').add({
+                    email: auth.currentUser.email,
+                    action: 'delete_product',
+                    productName: productName,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            }
             
             alert('Produk berhasil dihapus!');
             loadAdminProducts();
