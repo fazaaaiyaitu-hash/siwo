@@ -17,6 +17,8 @@ let editingProductId = null;
 let loginAttempts = 0;
 let sessionTimeout;
 let inactivityTimer;
+let currentOtpCode = null;
+let otpExpiryTime = null;
 
 // ========== PROTEKSI EXTRA ==========
 
@@ -25,7 +27,6 @@ let inactivityTimer;
     const element = new Image();
     Object.defineProperty(element, 'id', {
         get: function() {
-            // Jika console terbuka, redirect atau clear
             document.body.innerHTML = '<h1>Akses Ditolak</h1>';
             window.location.href = '/';
         }
@@ -41,7 +42,6 @@ document.addEventListener('contextmenu', function(e) {
 
 // 3. Blokir shortcut developer tools
 document.addEventListener('keydown', function(e) {
-    // F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U
     if (e.key === 'F12' || 
         (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J')) ||
         (e.ctrlKey && e.key === 'U')) {
@@ -50,15 +50,14 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
-// 4. Rate limiting login (5 attempts max) - Lock 1 MENIT saja
+// 4. Rate limiting login (5 attempts max) - Lock 1 MENIT
 function checkLoginAttempts() {
     const attempts = parseInt(localStorage.getItem('loginAttempts') || '0');
     const lockTime = localStorage.getItem('loginLockTime');
     
-    // Cek apakah sedang dalam masa lock (1 menit = 60000 ms)
     if (lockTime) {
         const elapsed = Date.now() - parseInt(lockTime);
-        const lockDuration = 1 * 60 * 1000; // 1 MENIT
+        const lockDuration = 1 * 60 * 1000;
         
         if (elapsed < lockDuration) {
             const remainingSeconds = Math.ceil((lockDuration - elapsed) / 1000);
@@ -68,13 +67,11 @@ function checkLoginAttempts() {
                 unit: 'detik'
             };
         } else {
-            // Reset setelah 1 menit
             localStorage.removeItem('loginAttempts');
             localStorage.removeItem('loginLockTime');
         }
     }
     
-    // Batas percobaan 5 kali, lock 1 menit
     if (attempts >= 5) {
         localStorage.setItem('loginLockTime', Date.now());
         return { 
@@ -93,16 +90,16 @@ function resetSessionTimer() {
     sessionTimeout = setTimeout(() => {
         alert('Sesi Anda habis karena tidak ada aktivitas. Silakan login kembali.');
         auth.signOut();
-    }, 30 * 60 * 1000); // 30 menit
+        window.location.reload();
+    }, 30 * 60 * 1000);
 }
 
 function resetInactivityTimer() {
     if (inactivityTimer) clearTimeout(inactivityTimer);
     resetSessionTimer();
     
-    // Tampilkan timer di UI
     const timerDiv = document.getElementById('sessionTimer');
-    if (timerDiv) {
+    if (timerDiv && auth.currentUser) {
         timerDiv.style.display = 'block';
         let timeLeft = 30 * 60;
         const interval = setInterval(() => {
@@ -129,18 +126,54 @@ function resetInactivityTimer() {
     });
 });
 
-// ========== AUTHENTICATION ==========
+// ========== FUNGSI OTP ==========
+
+// Generate kode OTP 6 digit
+function generateOtpCode() {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+// Kirim OTP (simulasi - akan tampil di alert)
+function sendOtpToAdmin(email) {
+    currentOtpCode = generateOtpCode();
+    otpExpiryTime = Date.now() + 5 * 60 * 1000; // Expired 5 menit
+    
+    // Tampilkan OTP ke admin (simulasi via alert)
+    // Di production, ini bisa diganti dengan kirim ke WhatsApp/Telegram/SMS
+    alert(`🔐 KODE OTP ANDA: ${currentOtpCode}\n\nKode berlaku 5 menit.\nJangan berikan kode ini kepada siapapun!`);
+    
+    // Simpan juga ke console untuk backup
+    console.log(`📱 Kode OTP untuk ${email}: ${currentOtpCode} (berlaku 5 menit)`);
+    
+    return currentOtpCode;
+}
+
+// Verifikasi OTP
+function verifyOtp(inputCode) {
+    if (!currentOtpCode || !otpExpiryTime) {
+        return { valid: false, message: 'Belum ada kode OTP. Kirim ulang.' };
+    }
+    
+    if (Date.now() > otpExpiryTime) {
+        currentOtpCode = null;
+        otpExpiryTime = null;
+        return { valid: false, message: 'Kode OTP sudah expired. Kirim ulang.' };
+    }
+    
+    if (inputCode === currentOtpCode) {
+        currentOtpCode = null;
+        otpExpiryTime = null;
+        return { valid: true, message: 'Sukses' };
+    }
+    
+    return { valid: false, message: 'Kode OTP salah!' };
+}
+
+// ========== AUTHENTICATION WITH OTP ==========
 
 // Auth state observer
 auth.onAuthStateChanged(async (user) => {
     if (user) {
-        // Verifikasi email harus terverifikasi
-        if (!user.emailVerified) {
-            alert('Email belum diverifikasi. Periksa email Anda.');
-            await auth.signOut();
-            return;
-        }
-        
         // Cek apakah user ada di collection 'admins' (whitelist)
         const adminDoc = await db.collection('admins').doc(user.uid).get();
         if (!adminDoc.exists) {
@@ -176,13 +209,14 @@ auth.onAuthStateChanged(async (user) => {
     }
 });
 
-// Login dengan proteksi
+// Login dengan proteksi + OTP
 document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     
     const loginCheck = checkLoginAttempts();
     if (loginCheck.locked) {
-        document.getElementById('loginMessage').innerHTML = `Terlalu banyak percobaan. Coba lagi ${loginCheck.remaining} menit lagi.`;
+        const unit = loginCheck.unit || 'detik';
+        document.getElementById('loginMessage').innerHTML = `⛔ Terlalu banyak percobaan. Coba lagi ${loginCheck.remaining} ${unit} lagi.`;
         return;
     }
     
@@ -194,48 +228,69 @@ document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
     loginBtn.textContent = 'Memproses...';
     
     try {
-        // Login ke Firebase
+        // STEP 1: Login ke Firebase dengan email & password
         const userCredential = await auth.signInWithEmailAndPassword(email, password);
         const user = userCredential.user;
         
-        // Verifikasi email
-        if (!user.emailVerified) {
-            await auth.signOut();
-            throw new Error('Email belum diverifikasi. Silakan verifikasi email Anda terlebih dahulu.');
-        }
-        
-        // Verifikasi admin whitelist
+        // STEP 2: Verifikasi admin whitelist
         const adminDoc = await db.collection('admins').doc(user.uid).get();
         if (!adminDoc.exists) {
             await auth.signOut();
             throw new Error('Akun tidak terdaftar sebagai admin.');
         }
         
-        // Sukses
+        // STEP 3: Kirim OTP
+        sendOtpToAdmin(email);
+        
+        // STEP 4: Minta input OTP
+        const userOtp = prompt('🔐 Masukkan kode OTP yang telah dikirim:');
+        
+        if (!userOtp) {
+            await auth.signOut();
+            throw new Error('OTP tidak dimasukkan.');
+        }
+        
+        // STEP 5: Verifikasi OTP
+        const otpResult = verifyOtp(userOtp);
+        if (!otpResult.valid) {
+            await auth.signOut();
+            throw new Error(otpResult.message);
+        }
+        
+        // STEP 6: Sukses login
         document.getElementById('loginMessage').innerHTML = '';
         loginAttempts = 0;
+        localStorage.removeItem('loginAttempts');
+        localStorage.removeItem('loginLockTime');
+        
+        alert('✅ Login berhasil! Selamat datang admin.');
         
     } catch (error) {
         loginAttempts++;
         localStorage.setItem('loginAttempts', loginAttempts);
         
-        let errorMsg = 'Login gagal: ';
+        const remainingAttempts = 5 - loginAttempts;
+        
+        let errorMsg = '';
         switch (error.code) {
             case 'auth/user-not-found':
-                errorMsg += 'Email tidak terdaftar';
+                errorMsg = 'Email tidak terdaftar';
                 break;
             case 'auth/wrong-password':
-                errorMsg += 'Password salah';
+                errorMsg = `Password salah. Sisa percobaan: ${remainingAttempts} kali`;
                 break;
             case 'auth/too-many-requests':
-                errorMsg += 'Terlalu banyak percobaan. Coba lagi nanti.';
+                errorMsg = 'Terlalu banyak percobaan. Coba lagi nanti.';
                 break;
             default:
-                errorMsg += error.message;
+                errorMsg = error.message;
         }
         
-        document.getElementById('loginMessage').innerHTML = errorMsg;
+        document.getElementById('loginMessage').innerHTML = `❌ Login gagal: ${errorMsg}`;
         console.error('Login error:', error);
+        
+        // Jika login gagal, logout untuk bersih-bersih
+        await auth.signOut();
     } finally {
         loginBtn.disabled = false;
         loginBtn.textContent = 'Login';
@@ -256,7 +311,7 @@ document.getElementById('logoutBtn')?.addEventListener('click', async () => {
     document.getElementById('loginPassword').value = '';
 });
 
-// Helper: get client IP (pake API eksternal)
+// Helper: get client IP
 async function getClientIP() {
     try {
         const response = await fetch('https://api.ipify.org?format=json');
@@ -356,7 +411,6 @@ document.getElementById('productForm')?.addEventListener('submit', async (e) => 
             alert('Produk berhasil ditambahkan!');
         }
         
-        // Log aktivitas
         await db.collection('adminLogs').add({
             email: auth.currentUser?.email,
             action: editingProductId ? 'update_product' : 'add_product',
@@ -391,7 +445,6 @@ window.editProduct = async (id) => {
 window.deleteProduct = async (id) => {
     if (confirm('Yakin ingin menghapus produk ini? Tindakan ini tidak bisa dibatalkan.')) {
         try {
-            // Ambil data produk dulu untuk log
             const productDoc = await db.collection('products').doc(id).get();
             const productName = productDoc.data()?.name;
             
