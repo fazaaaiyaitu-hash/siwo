@@ -55,13 +55,13 @@ function checkLoginAttempts() {
     const attempts = localStorage.getItem('loginAttempts') || 0;
     const lockTime = localStorage.getItem('loginLockTime');
     
-    if (lockTime && Date.now() - parseInt(lockTime) < 15 * 60 * 1000) {
-        return { locked: true, remaining: Math.ceil((15 * 60 * 1000 - (Date.now() - parseInt(lockTime))) / 1000 / 60) };
+    if (lockTime && Date.now() - parseInt(lockTime) < 1 * 60 * 1000) {
+        return { locked: true, remaining: Math.ceil((1 * 60 * 1000 - (Date.now() - parseInt(lockTime))) / 1000 / 60) };
     }
     
     if (attempts >= 5) {
         localStorage.setItem('loginLockTime', Date.now());
-        return { locked: true, remaining: 15 };
+        return { locked: true, remaining: 1 };
     }
     
     return { locked: false };
