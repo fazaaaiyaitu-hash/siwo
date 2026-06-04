@@ -30,6 +30,28 @@
             font-size: 12px;
             display: none;
         }
+
+        /* Info OTP box */
+        .otp-info {
+            margin-top: 15px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-left: 4px solid #3498db;
+            border-radius: 5px;
+            font-size: 12px;
+            text-align: left;
+        }
+        .otp-info p {
+            margin: 0 0 5px 0;
+            font-weight: bold;
+        }
+        .otp-info ol {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .otp-info li {
+            margin: 3px 0;
+        }
     </style>
 </head>
 <body>
@@ -54,7 +76,17 @@
                     <button type="submit" id="loginBtn">Login</button>
                     <div id="loginMessage" class="login-attempts"></div>
                 </form>
-                <!-- Tombol registrasi dihapus -->
+                
+                <!-- Informasi OTP -->
+                <div class="otp-info">
+                    <p>🔐 <strong>Cara Login:</strong></p>
+                    <ol>
+                        <li>Masukkan email & password admin</li>
+                        <li>Kode OTP 6 digit akan muncul di <strong>alert/prompt</strong></li>
+                        <li>Masukkan kode OTP ke kotak dialog</li>
+                        <li>Kode berlaku <strong>5 menit</strong></li>
+                    </ol>
+                </div>
             </div>
 
             <!-- Admin Panel (hanya tampil setelah login) -->
