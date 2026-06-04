@@ -10,8 +10,10 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-const storage = firebase.storage();
 const auth = firebase.auth();
+
+// Hapus storage karena tidak dipakai
+// const storage = firebase.storage();
 
 let editingProductId = null;
 let loginAttempts = 0;
@@ -353,13 +355,13 @@ async function getClientIP() {
     }
 }
 
-// ========== CRUD PRODUCTS ==========
+// ========== CRUD PRODUCTS (TANPA STORAGE) ==========
 
 async function loadAdminProducts() {
     const tbody = document.getElementById('adminProductsList');
     if (!tbody) return;
     
-    tbody.innerHTML = '<tr><td colspan="4">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="3">Loading...</td></tr>';
     
     try {
         const snapshot = await db.collection('products').get();
@@ -371,7 +373,6 @@ async function loadAdminProducts() {
             row.innerHTML = `
                 <td>${escapeHtml(product.name)}</td>
                 <td>Rp ${formatPrice(product.price)}</td>
-                <td style="font-size:11px; max-width:200px; overflow:hidden;">${product.fileUrl ? '✓ Ada' : '-'}</td>
                 <td>
                     <button class="btn-edit" onclick="editProduct('${doc.id}')">Edit</button>
                     <button class="btn-delete" onclick="deleteProduct('${doc.id}')">Hapus</button>
@@ -380,7 +381,7 @@ async function loadAdminProducts() {
         });
     } catch (error) {
         console.error('Error:', error);
-        tbody.innerHTML = '<tr><td colspan="4">Error loading products</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="3">Error loading products</td></tr>';
     }
 }
 
@@ -409,7 +410,7 @@ if (addProductBtn) {
     });
 }
 
-// Submit form produk - DIPERBAIKI
+// Submit form produk - TANPA UPLOAD FILE
 const productForm = document.getElementById('productForm');
 if (productForm) {
     productForm.addEventListener('submit', async (e) => {
@@ -419,26 +420,34 @@ if (productForm) {
         const description = document.getElementById('productDesc').value;
         const price = parseInt(document.getElementById('productPrice').value);
         const fileUrl = document.getElementById('productFileUrl').value;
-        const file = document.getElementById('productFile').files[0];
         
-        let finalFileUrl = fileUrl;
         const saveBtn = document.getElementById('saveProductBtn');
+        
+        // Validasi
+        if (!name) {
+            alert('Nama produk harus diisi!');
+            return;
+        }
+        
+        if (!price || price <= 0) {
+            alert('Harga harus diisi dengan angka yang valid!');
+            return;
+        }
+        
+        if (!fileUrl) {
+            alert('URL file download harus diisi!');
+            return;
+        }
         
         saveBtn.disabled = true;
         saveBtn.textContent = 'Menyimpan...';
         
         try {
-            if (file) {
-                const storageRef = storage.ref(`products/${Date.now()}_${file.name}`);
-                await storageRef.put(file);
-                finalFileUrl = await storageRef.getDownloadURL();
-            }
-            
             const productData = {
                 name: name,
                 description: description,
                 price: price,
-                fileUrl: finalFileUrl || '',
+                fileUrl: fileUrl,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             };
             
@@ -462,8 +471,8 @@ if (productForm) {
             }
             
             closeModal('productFormModal');
-            loadAdminProducts();
             productForm.reset();
+            loadAdminProducts();
             
         } catch (error) {
             console.error('Error:', error);
@@ -486,7 +495,6 @@ window.editProduct = async (id) => {
     document.getElementById('productDesc').value = product.description;
     document.getElementById('productPrice').value = product.price;
     document.getElementById('productFileUrl').value = product.fileUrl || '';
-    document.getElementById('productFile').value = '';
     
     document.getElementById('productFormModal').style.display = 'block';
 };
