@@ -1,11 +1,11 @@
-// Konfigurasi Firebase - SAMA DENGAN script.js
+// Konfigurasi Firebase - GANTI DENGAN PUNYA ANDA
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_AUTH_DOMAIN",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_STORAGE_BUCKET",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyCDUbOkxaVWwfANbe1qQaV__BH2nwrc5FI",
+  authDomain: "siwoweb.firebaseapp.com",
+  projectId: "siwoweb",
+  storageBucket: "siwoweb.firebasestorage.app",
+  messagingSenderId: "587733291794",
+  appId: "1:587733291794:web:b272d84e07c174a7ead9cb"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -14,63 +14,246 @@ const storage = firebase.storage();
 const auth = firebase.auth();
 
 let editingProductId = null;
+let loginAttempts = 0;
+let sessionTimeout;
+let inactivityTimer;
+
+// ========== PROTEKSI EXTRA ==========
+
+// 1. Deteksi DevTools/Console
+(function detectDevTools() {
+    const element = new Image();
+    Object.defineProperty(element, 'id', {
+        get: function() {
+            // Jika console terbuka, redirect atau clear
+            document.body.innerHTML = '<h1>Akses Ditolak</h1>';
+            window.location.href = '/';
+        }
+    });
+    console.log('%c', element);
+})();
+
+// 2. Blokir klik kanan
+document.addEventListener('contextmenu', function(e) {
+    e.preventDefault();
+    return false;
+});
+
+// 3. Blokir shortcut developer tools
+document.addEventListener('keydown', function(e) {
+    // F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U
+    if (e.key === 'F12' || 
+        (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J')) ||
+        (e.ctrlKey && e.key === 'U')) {
+        e.preventDefault();
+        return false;
+    }
+});
+
+// 4. Rate limiting login (5 attempts max)
+function checkLoginAttempts() {
+    const attempts = localStorage.getItem('loginAttempts') || 0;
+    const lockTime = localStorage.getItem('loginLockTime');
+    
+    if (lockTime && Date.now() - parseInt(lockTime) < 15 * 60 * 1000) {
+        return { locked: true, remaining: Math.ceil((15 * 60 * 1000 - (Date.now() - parseInt(lockTime))) / 1000 / 60) };
+    }
+    
+    if (attempts >= 5) {
+        localStorage.setItem('loginLockTime', Date.now());
+        return { locked: true, remaining: 15 };
+    }
+    
+    return { locked: false };
+}
+
+// 5. Session timeout (30 menit)
+function resetSessionTimer() {
+    if (sessionTimeout) clearTimeout(sessionTimeout);
+    sessionTimeout = setTimeout(() => {
+        alert('Sesi Anda habis karena tidak ada aktivitas. Silakan login kembali.');
+        auth.signOut();
+    }, 30 * 60 * 1000); // 30 menit
+}
+
+function resetInactivityTimer() {
+    if (inactivityTimer) clearTimeout(inactivityTimer);
+    resetSessionTimer();
+    
+    // Tampilkan timer di UI
+    const timerDiv = document.getElementById('sessionTimer');
+    if (timerDiv) {
+        timerDiv.style.display = 'block';
+        let timeLeft = 30 * 60;
+        const interval = setInterval(() => {
+            if (!auth.currentUser) {
+                clearInterval(interval);
+                timerDiv.style.display = 'none';
+                return;
+            }
+            const minutes = Math.floor(timeLeft / 60);
+            const seconds = timeLeft % 60;
+            timerDiv.textContent = `Sesi berakhir: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+            timeLeft--;
+            if (timeLeft < 0) clearInterval(interval);
+        }, 1000);
+    }
+}
+
+// Aktivitas user
+['click', 'mousemove', 'keypress', 'scroll'].forEach(event => {
+    document.addEventListener(event, () => {
+        if (auth.currentUser) {
+            resetInactivityTimer();
+        }
+    });
+});
+
+// ========== AUTHENTICATION ==========
 
 // Auth state observer
-auth.onAuthStateChanged(user => {
+auth.onAuthStateChanged(async (user) => {
     if (user) {
+        // Verifikasi email harus terverifikasi
+        if (!user.emailVerified) {
+            alert('Email belum diverifikasi. Periksa email Anda.');
+            await auth.signOut();
+            return;
+        }
+        
+        // Cek apakah user ada di collection 'admins' (whitelist)
+        const adminDoc = await db.collection('admins').doc(user.uid).get();
+        if (!adminDoc.exists) {
+            alert('Anda tidak memiliki akses admin.');
+            await auth.signOut();
+            return;
+        }
+        
+        // Login sukses
         document.getElementById('authSection').style.display = 'none';
         document.getElementById('adminPanel').style.display = 'block';
+        document.getElementById('adminEmail').innerText = user.email;
+        
+        // Reset login attempts
+        localStorage.removeItem('loginAttempts');
+        localStorage.removeItem('loginLockTime');
+        
         loadAdminProducts();
+        resetInactivityTimer();
+        
+        // Log akses admin
+        await db.collection('adminLogs').add({
+            email: user.email,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            action: 'login',
+            ip: await getClientIP()
+        });
+        
     } else {
         document.getElementById('authSection').style.display = 'block';
         document.getElementById('adminPanel').style.display = 'none';
+        if (sessionTimeout) clearTimeout(sessionTimeout);
     }
 });
 
-// Login
+// Login dengan proteksi
 document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    
+    const loginCheck = checkLoginAttempts();
+    if (loginCheck.locked) {
+        document.getElementById('loginMessage').innerHTML = `Terlalu banyak percobaan. Coba lagi ${loginCheck.remaining} menit lagi.`;
+        return;
+    }
+    
     const email = document.getElementById('loginEmail').value;
     const password = document.getElementById('loginPassword').value;
+    const loginBtn = document.getElementById('loginBtn');
+    
+    loginBtn.disabled = true;
+    loginBtn.textContent = 'Memproses...';
     
     try {
-        await auth.signInWithEmailAndPassword(email, password);
-        alert('Login berhasil!');
+        // Login ke Firebase
+        const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        const user = userCredential.user;
+        
+        // Verifikasi email
+        if (!user.emailVerified) {
+            await auth.signOut();
+            throw new Error('Email belum diverifikasi. Silakan verifikasi email Anda terlebih dahulu.');
+        }
+        
+        // Verifikasi admin whitelist
+        const adminDoc = await db.collection('admins').doc(user.uid).get();
+        if (!adminDoc.exists) {
+            await auth.signOut();
+            throw new Error('Akun tidak terdaftar sebagai admin.');
+        }
+        
+        // Sukses
+        document.getElementById('loginMessage').innerHTML = '';
+        loginAttempts = 0;
+        
     } catch (error) {
-        alert('Login gagal: ' + error.message);
+        loginAttempts++;
+        localStorage.setItem('loginAttempts', loginAttempts);
+        
+        let errorMsg = 'Login gagal: ';
+        switch (error.code) {
+            case 'auth/user-not-found':
+                errorMsg += 'Email tidak terdaftar';
+                break;
+            case 'auth/wrong-password':
+                errorMsg += 'Password salah';
+                break;
+            case 'auth/too-many-requests':
+                errorMsg += 'Terlalu banyak percobaan. Coba lagi nanti.';
+                break;
+            default:
+                errorMsg += error.message;
+        }
+        
+        document.getElementById('loginMessage').innerHTML = errorMsg;
+        console.error('Login error:', error);
+    } finally {
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'Login';
     }
-});
-
-// Register
-document.getElementById('registerBtn')?.addEventListener('click', async () => {
-    const email = document.getElementById('regEmail').value;
-    const password = document.getElementById('regPassword').value;
-    
-    try {
-        await auth.createUserWithEmailAndPassword(email, password);
-        alert('Registrasi berhasil! Silakan login.');
-        document.getElementById('registerForm').style.display = 'none';
-    } catch (error) {
-        alert('Registrasi gagal: ' + error.message);
-    }
-});
-
-// Toggle register form
-document.getElementById('showRegisterBtn')?.addEventListener('click', () => {
-    const form = document.getElementById('registerForm');
-    form.style.display = form.style.display === 'none' ? 'block' : 'none';
 });
 
 // Logout
 document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+    if (auth.currentUser) {
+        await db.collection('adminLogs').add({
+            email: auth.currentUser.email,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            action: 'logout'
+        });
+    }
     await auth.signOut();
-    alert('Logout berhasil');
+    document.getElementById('loginEmail').value = '';
+    document.getElementById('loginPassword').value = '';
 });
 
-// Load produk untuk admin
+// Helper: get client IP (pake API eksternal)
+async function getClientIP() {
+    try {
+        const response = await fetch('https://api.ipify.org?format=json');
+        const data = await response.json();
+        return data.ip;
+    } catch {
+        return 'unknown';
+    }
+}
+
+// ========== CRUD PRODUCTS ==========
+
 async function loadAdminProducts() {
     const tbody = document.getElementById('adminProductsList');
-    tbody.innerHTML = '<tr><td colspan="3">Loading...</td></tr>';
+    if (!tbody) return;
+    
+    tbody.innerHTML = '<tr><td colspan="4">Loading...</td></tr>';
     
     try {
         const snapshot = await db.collection('products').get();
@@ -80,8 +263,9 @@ async function loadAdminProducts() {
             const product = doc.data();
             const row = tbody.insertRow();
             row.innerHTML = `
-                <td>${product.name}</td>
+                <td>${escapeHtml(product.name)}</td>
                 <td>Rp ${formatPrice(product.price)}</td>
+                <td style="font-size:11px; max-width:200px; overflow:hidden;">${product.fileUrl ? '✓ Ada' : '-'}</td>
                 <td>
                     <button class="btn-edit" onclick="editProduct('${doc.id}')">Edit</button>
                     <button class="btn-delete" onclick="deleteProduct('${doc.id}')">Hapus</button>
@@ -90,12 +274,22 @@ async function loadAdminProducts() {
         });
     } catch (error) {
         console.error('Error:', error);
-        tbody.innerHTML = '<tr><td colspan="3">Error loading products</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4">Error loading products</td></tr>';
     }
 }
 
 function formatPrice(price) {
     return new Intl.NumberFormat('id-ID').format(price);
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
 }
 
 // Tambah produk
@@ -119,7 +313,6 @@ document.getElementById('productForm')?.addEventListener('submit', async (e) => 
     let finalFileUrl = fileUrl;
     
     try {
-        // Upload file jika ada
         if (file) {
             const storageRef = storage.ref(`products/${Date.now()}_${file.name}`);
             await storageRef.put(file);
@@ -131,16 +324,25 @@ document.getElementById('productForm')?.addEventListener('submit', async (e) => 
             description,
             price,
             fileUrl: finalFileUrl || '',
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         };
         
         if (editingProductId) {
             await db.collection('products').doc(editingProductId).update(productData);
             alert('Produk berhasil diupdate!');
         } else {
+            productData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
             await db.collection('products').add(productData);
             alert('Produk berhasil ditambahkan!');
         }
+        
+        // Log aktivitas
+        await db.collection('adminLogs').add({
+            email: auth.currentUser?.email,
+            action: editingProductId ? 'update_product' : 'add_product',
+            productName: name,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        });
         
         closeModal('productFormModal');
         loadAdminProducts();
@@ -167,9 +369,21 @@ window.editProduct = async (id) => {
 
 // Delete produk
 window.deleteProduct = async (id) => {
-    if (confirm('Yakin ingin menghapus produk ini?')) {
+    if (confirm('Yakin ingin menghapus produk ini? Tindakan ini tidak bisa dibatalkan.')) {
         try {
+            // Ambil data produk dulu untuk log
+            const productDoc = await db.collection('products').doc(id).get();
+            const productName = productDoc.data()?.name;
+            
             await db.collection('products').doc(id).delete();
+            
+            await db.collection('adminLogs').add({
+                email: auth.currentUser?.email,
+                action: 'delete_product',
+                productName: productName,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            
             alert('Produk berhasil dihapus!');
             loadAdminProducts();
         } catch (error) {
