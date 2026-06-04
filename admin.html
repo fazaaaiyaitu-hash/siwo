@@ -5,69 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Panel - DigitalStore</title>
     <link rel="stylesheet" href="style.css">
-    <style>
-        /* Sembunyikan admin panel dari search engine */
-        .no-index {
-            display: none;
-        }
-        
-        /* Proteksi brute force */
-        .login-attempts {
-            color: red;
-            font-size: 12px;
-            margin-top: 5px;
-        }
-        
-        /* Session timeout indicator */
-        .session-timer {
-            position: fixed;
-            bottom: 10px;
-            right: 10px;
-            background: #333;
-            color: white;
-            padding: 5px 10px;
-            border-radius: 5px;
-            font-size: 12px;
-            display: none;
-        }
-
-        /* Info OTP box */
-        .otp-info {
-            margin-top: 15px;
-            padding: 10px;
-            background: #f8f9fa;
-            border-left: 4px solid #3498db;
-            border-radius: 5px;
-            font-size: 12px;
-            text-align: left;
-        }
-        .otp-info p {
-            margin: 0 0 5px 0;
-            font-weight: bold;
-        }
-        .otp-info ol {
-            margin: 0;
-            padding-left: 20px;
-        }
-        .otp-info li {
-            margin: 3px 0;
-        }
-    </style>
 </head>
 <body>
     <nav>
         <div class="container">
             <h1>CPanel</h1>
             <div class="nav-links">
-                <span id="adminEmail" style="margin-right: 15px;"></span>
-                <button id="logoutBtn" class="btn-logout">Logout</button>
+                <span id="adminEmail"></span>
+                <button id="logoutBtn" class="btn-logout" style="display: none;">Logout</button>
             </div>
         </div>
     </nav>
 
     <main>
         <div class="container">
-            <!-- HANYA FORM LOGIN - tanpa register -->
+            <!-- FORM LOGIN -->
             <div id="authSection" class="auth-section">
                 <h2>Login Admin</h2>
                 <form id="loginForm">
@@ -82,7 +34,7 @@
                     <p>🔐 <strong>Cara Login:</strong></p>
                     <ol>
                         <li>Masukkan email & password admin</li>
-                        <li>Kode OTP 6 digit akan muncul di <strong>alert/prompt</strong></li>
+                        <li>Kode OTP 6 digit akan muncul di <strong>alert</strong></li>
                         <li>Masukkan kode OTP ke kotak dialog</li>
                         <li>Kode berlaku <strong>5 menit</strong></li>
                     </ol>
@@ -99,7 +51,7 @@
                 <div id="productsTable" class="products-table">
                     <table>
                         <thead>
-                            <tr><th>Nama</th><th>Harga</th><th>File URL</th><th>Aksi</th></tr>
+                            <tr><th>Nama</th><th>Harga</th><th>File</th><th>Aksi</th></tr>
                         </thead>
                         <tbody id="adminProductsList"></tbody>
                     </table>
@@ -118,11 +70,11 @@
             <h3 id="modalTitle">Tambah Produk</h3>
             <form id="productForm">
                 <input type="text" id="productName" placeholder="Nama Produk" required>
-                <textarea id="productDesc" placeholder="Deskripsi" required></textarea>
+                <textarea id="productDesc" placeholder="Deskripsi" rows="4" required></textarea>
                 <input type="number" id="productPrice" placeholder="Harga (Rp)" required>
                 <input type="file" id="productFile" accept=".zip,.pdf,.rar,.jpg,.png">
                 <input type="text" id="productFileUrl" placeholder="Atau URL file langsung">
-                <button type="submit">Simpan</button>
+                <button type="submit" id="saveProductBtn">Simpan</button>
             </form>
         </div>
     </div>
