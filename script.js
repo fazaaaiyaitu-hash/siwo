@@ -10,13 +10,16 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-const storage = firebase.storage();
+// Hapus storage karena tidak dipakai
+// const storage = firebase.storage();
 
 let currentProduct = null;
 
 // Load produk dari Firestore
 async function loadProducts() {
     const productsGrid = document.getElementById('productsGrid');
+    if (!productsGrid) return;
+    
     productsGrid.innerHTML = '<div class="loading">Loading produk...</div>';
     
     try {
@@ -40,11 +43,19 @@ async function loadProducts() {
 
 function displayProductCard(product) {
     const productsGrid = document.getElementById('productsGrid');
+    if (!productsGrid) return;
+    
     const card = document.createElement('div');
     card.className = 'product-card';
+    
+    // Batasi deskripsi yang ditampilkan
+    const shortDesc = product.description ? 
+        (product.description.substring(0, 100) + (product.description.length > 100 ? '...' : '')) : 
+        'Tidak ada deskripsi';
+    
     card.innerHTML = `
-        <h3>${product.name}</h3>
-        <p>${product.description.substring(0, 100)}${product.description.length > 100 ? '...' : ''}</p>
+        <h3>${escapeHtml(product.name)}</h3>
+        <p>${escapeHtml(shortDesc)}</p>
         <div class="price">Rp ${formatPrice(product.price)}</div>
         <button class="btn-buy" onclick="showCheckout('${product.id}')">Beli Sekarang</button>
     `;
@@ -58,24 +69,29 @@ function formatPrice(price) {
 function showProductDetail(productId) {
     const modal = document.getElementById('productModal');
     const modalBody = document.getElementById('modalBody');
+    if (!modal || !modalBody) return;
     
     db.collection('products').doc(productId).get().then(doc => {
         if (doc.exists) {
             const product = doc.data();
             modalBody.innerHTML = `
-                <h2>${product.name}</h2>
-                <p>${product.description}</p>
+                <h2>${escapeHtml(product.name)}</h2>
+                <p>${escapeHtml(product.description || 'Tidak ada deskripsi')}</p>
                 <div class="price">Rp ${formatPrice(product.price)}</div>
                 <button class="btn-buy" onclick="closeModal('productModal'); showCheckout('${productId}')">Beli Sekarang</button>
             `;
             modal.style.display = 'block';
         }
+    }).catch(error => {
+        console.error('Error:', error);
+        alert('Gagal memuat detail produk');
     });
 }
 
 function showCheckout(productId) {
     const modal = document.getElementById('checkoutModal');
     const checkoutBody = document.getElementById('checkoutBody');
+    if (!modal || !checkoutBody) return;
     
     db.collection('products').doc(productId).get().then(doc => {
         if (doc.exists) {
@@ -83,7 +99,7 @@ function showCheckout(productId) {
             currentProduct = { id: productId, ...product };
             
             checkoutBody.innerHTML = `
-                <h3>${product.name}</h3>
+                <h3>${escapeHtml(product.name)}</h3>
                 <p>Harga: Rp ${formatPrice(product.price)}</p>
                 <hr>
                 <h4>Instruksi Pembayaran:</h4>
@@ -95,21 +111,39 @@ function showCheckout(productId) {
             `;
             modal.style.display = 'block';
         }
+    }).catch(error => {
+        console.error('Error:', error);
+        alert('Gagal memuat data produk');
     });
 }
 
 function processPayment() {
     if (currentProduct && currentProduct.fileUrl) {
+        // Buka URL file di tab baru
         window.open(currentProduct.fileUrl, '_blank');
         closeModal('checkoutModal');
         alert('Terima kasih telah membeli! File akan diunduh.');
     } else {
-        alert('File sedang disiapkan. Hubungi admin.');
+        alert('URL file tidak tersedia. Silakan hubungi admin.');
     }
 }
 
 function closeModal(modalId) {
-    document.getElementById(modalId).style.display = 'none';
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// Escape HTML untuk keamanan (mencegah XSS)
+function escapeHtml(str) {
+    if (!str) return '';
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 // Event listeners untuk modal
@@ -126,7 +160,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Close buttons
     document.querySelectorAll('.close').forEach(btn => {
         btn.onclick = function() {
-            this.closest('.modal').style.display = 'none';
+            const modal = this.closest('.modal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
         }
     });
 });
