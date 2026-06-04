@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - DigitalStore</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav>
+        <div class="container">
+            <h1>🔧 Admin Panel</h1>
+            <div class="nav-links">
+                <a href="index.html">Beranda</a>
+                <button id="logoutBtn" class="btn-logout">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <main>
+        <div class="container">
+            <div id="authSection" class="auth-section">
+                <h2>Login Admin</h2>
+                <form id="loginForm">
+                    <input type="email" id="loginEmail" placeholder="Email" required>
+                    <input type="password" id="loginPassword" placeholder="Password" required>
+                    <button type="submit">Login</button>
+                </form>
+                <button id="showRegisterBtn">Buat Akun Admin</button>
+                
+                <div id="registerForm" style="display:none; margin-top:20px;">
+                    <h3>Register Admin</h3>
+                    <input type="email" id="regEmail" placeholder="Email">
+                    <input type="password" id="regPassword" placeholder="Password">
+                    <button id="registerBtn">Register</button>
+                </div>
+            </div>
+
+            <div id="adminPanel" style="display:none;">
+                <div class="admin-header">
+                    <h2>Manajemen Produk</h2>
+                    <button id="addProductBtn">+ Tambah Produk</button>
+                </div>
+
+                <div id="productsTable" class="products-table">
+                    <table>
+                        <thead>
+                            <tr><th>Nama</th><th>Harga</th><th>Aksi</th></tr>
+                        </thead>
+                        <tbody id="adminProductsList"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal Tambah/Edit Produk -->
+    <div id="productFormModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3 id="modalTitle">Tambah Produk</h3>
+            <form id="productForm">
+                <input type="text" id="productName" placeholder="Nama Produk" required>
+                <textarea id="productDesc" placeholder="Deskripsi" required></textarea>
+                <input type="number" id="productPrice" placeholder="Harga (Rp)" required>
+                <input type="file" id="productFile" accept=".zip,.pdf,.rar">
+                <input type="text" id="productFileUrl" placeholder="Atau URL file langsung">
+                <button type="submit">Simpan</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+    <script src="admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DigitalStore - Jual Produk Digital</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav>
+        <div class="container">
+            <h1>📦 DigitalStore</h1>
+            <div class="nav-links">
+                <a href="index.html">Beranda</a>
+                <a href="admin.html">Admin</a>
+            </div>
+        </div>
+    </nav>
+
+    <main>
+        <div class="container">
+            <div class="hero">
+                <h2>Produk Digital Berkualitas</h2>
+                <p>Download langsung setelah pembayaran</p>
+            </div>
+
+            <div class="products-grid" id="productsGrid">
+                <div class="loading">Loading produk...</div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal Detail Produk -->
+    <div id="productModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+
+    <!-- Modal Checkout -->
+    <div id="checkoutModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Checkout</h2>
+            <div id="checkoutBody"></div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
