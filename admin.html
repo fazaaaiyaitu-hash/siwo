@@ -64,20 +64,19 @@
     <div id="sessionTimer" class="session-timer"></div>
 
     <!-- Modal Tambah/Edit Produk -->
-    <div id="productFormModal" class="modal">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <h3 id="modalTitle">Tambah Produk</h3>
-            <form id="productForm">
-                <input type="text" id="productName" placeholder="Nama Produk" required>
-                <textarea id="productDesc" placeholder="Deskripsi" rows="4" required></textarea>
-                <input type="number" id="productPrice" placeholder="Harga (Rp)" required>
-                <input type="file" id="productFile" accept=".zip,.pdf,.rar,.jpg,.png">
-                <input type="text" id="productFileUrl" placeholder="Atau URL file langsung">
-                <button type="submit" id="saveProductBtn">Simpan</button>
-            </form>
-        </div>
+<div id="productFormModal" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h3 id="modalTitle">Tambah Produk</h3>
+        <form id="productForm">
+            <input type="text" id="productName" placeholder="Nama Produk" required>
+            <textarea id="productDesc" placeholder="Deskripsi" rows="4" required></textarea>
+            <input type="number" id="productPrice" placeholder="Harga (Rp)" required>
+            <input type="text" id="productFileUrl" placeholder="URL file (Google Drive, Dropbox, dll)" required>
+            <button type="submit" id="saveProductBtn">Simpan</button>
+        </form>
     </div>
+</div>
 
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
