@@ -5,13 +5,39 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Panel - DigitalStore</title>
     <link rel="stylesheet" href="style.css">
+    <style>
+        /* Sembunyikan admin panel dari search engine */
+        .no-index {
+            display: none;
+        }
+        
+        /* Proteksi brute force */
+        .login-attempts {
+            color: red;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        
+        /* Session timeout indicator */
+        .session-timer {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            background: #333;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            display: none;
+        }
+    </style>
 </head>
 <body>
     <nav>
         <div class="container">
             <h1>🔧 Admin Panel</h1>
             <div class="nav-links">
-                <a href="index.html">Beranda</a>
+                <span id="adminEmail" style="margin-right: 15px;"></span>
                 <button id="logoutBtn" class="btn-logout">Logout</button>
             </div>
         </div>
@@ -19,23 +45,19 @@
 
     <main>
         <div class="container">
+            <!-- HANYA FORM LOGIN - tanpa register -->
             <div id="authSection" class="auth-section">
                 <h2>Login Admin</h2>
                 <form id="loginForm">
-                    <input type="email" id="loginEmail" placeholder="Email" required>
+                    <input type="email" id="loginEmail" placeholder="Email" required autocomplete="off">
                     <input type="password" id="loginPassword" placeholder="Password" required>
-                    <button type="submit">Login</button>
+                    <button type="submit" id="loginBtn">Login</button>
+                    <div id="loginMessage" class="login-attempts"></div>
                 </form>
-                <button id="showRegisterBtn">Buat Akun Admin</button>
-                
-                <div id="registerForm" style="display:none; margin-top:20px;">
-                    <h3>Register Admin</h3>
-                    <input type="email" id="regEmail" placeholder="Email">
-                    <input type="password" id="regPassword" placeholder="Password">
-                    <button id="registerBtn">Register</button>
-                </div>
+                <!-- Tombol registrasi dihapus -->
             </div>
 
+            <!-- Admin Panel (hanya tampil setelah login) -->
             <div id="adminPanel" style="display:none;">
                 <div class="admin-header">
                     <h2>Manajemen Produk</h2>
@@ -45,7 +67,7 @@
                 <div id="productsTable" class="products-table">
                     <table>
                         <thead>
-                            <tr><th>Nama</th><th>Harga</th><th>Aksi</th></tr>
+                            <tr><th>Nama</th><th>Harga</th><th>File URL</th><th>Aksi</th></tr>
                         </thead>
                         <tbody id="adminProductsList"></tbody>
                     </table>
@@ -53,6 +75,9 @@
             </div>
         </div>
     </main>
+
+    <!-- Session timeout indicator -->
+    <div id="sessionTimer" class="session-timer"></div>
 
     <!-- Modal Tambah/Edit Produk -->
     <div id="productFormModal" class="modal">
@@ -63,7 +88,7 @@
                 <input type="text" id="productName" placeholder="Nama Produk" required>
                 <textarea id="productDesc" placeholder="Deskripsi" required></textarea>
                 <input type="number" id="productPrice" placeholder="Harga (Rp)" required>
-                <input type="file" id="productFile" accept=".zip,.pdf,.rar">
+                <input type="file" id="productFile" accept=".zip,.pdf,.rar,.jpg,.png">
                 <input type="text" id="productFileUrl" placeholder="Atau URL file langsung">
                 <button type="submit">Simpan</button>
             </form>
